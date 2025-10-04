@@ -29,6 +29,11 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 app.post("/api/geofence", async (req, res) => {
   // UPDATED: Destructure both business_name and geometry from the request body
   const { business_name, geometry } = req.body;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error(
+      "FATAL ERROR: Supabase URL or Service Key is not set in environment variables."
+    );
+  }
 
   // UPDATED: Validate both inputs
   if (!business_name || !geometry) {
