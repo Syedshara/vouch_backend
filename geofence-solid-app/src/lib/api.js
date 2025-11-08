@@ -2,7 +2,7 @@
 import { authHelpers } from "./supabase";
 
 // Your new Node.js server's address
-const API_URL = "http://localhost:8080/api";
+const API_URL = "https://vouch-backend-1.onrender.com/api";
 
 const getAuthHeaders = async () => {
   const { session } = await authHelpers.getSession();

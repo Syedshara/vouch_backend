@@ -1,5 +1,4 @@
 // src/pages/LocationsPage.jsx
-"use client";
 
 import { createSignal, onMount, For, Show } from "solid-js";
 import { api } from "../lib/api"; // <-- IMPORT NEW API HELPER

@@ -1,5 +1,3 @@
-"use client";
-
 import { createSignal, Show, For, createEffect, onCleanup } from "solid-js";
 
 function ControlPanel(props) {
