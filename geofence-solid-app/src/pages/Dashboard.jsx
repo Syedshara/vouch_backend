@@ -1,12 +1,10 @@
 // src/pages/Dashboard.jsx
-
 import { createSignal, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { authHelpers, supabase } from "../lib/supabase";
+import { authHelpers } from "../lib/supabase";
+import { api } from "../lib/api"; // <-- IMPORT NEW API HELPER
 import Sidebar from "../components/Sidebar";
 
-// The "props" argument will automatically contain a "children" property
-// which represents the nested routes defined in router.jsx
 export default function Dashboard(props) {
   const [profile, setProfile] = createSignal(null);
   const [loading, setLoading] = createSignal(true);
@@ -19,13 +17,18 @@ export default function Dashboard(props) {
       return;
     }
 
-    const { data: profileData } = await supabase
-      .from("business_profiles") // Make sure this table name matches your DB
-      .select("business_name")
-      .eq("user_id", user.id)
-      .single();
+    try {
+      // --- THIS IS THE FIX ---
+      // Fetch profile from our secure Node.js backend
+      const profileData = await api.getProfile();
+      setProfile(profileData);
+    } catch (error) {
+      console.error("Failed to load dashboard profile:", error);
+      // If profile fetch fails (e.g., still being created),
+      // sign out or show an error.
+      // For now, we just won't set the name.
+    }
 
-    setProfile(profileData);
     setLoading(false);
   });
 
@@ -41,13 +44,7 @@ export default function Dashboard(props) {
     >
       <div class="dashboard-container">
         <Sidebar profile={profile()} onSignOut={handleSignOut} />
-        <main class="dashboard-main">
-          {/* THIS IS THE FIX: 
-            Instead of <Outlet />, we render props.children. The router will
-            automatically place the correct child page component here.
-          */}
-          {props.children}
-        </main>
+        <main class="dashboard-main">{props.children}</main>
       </div>
     </Show>
   );

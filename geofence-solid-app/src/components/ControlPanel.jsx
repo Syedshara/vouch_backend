@@ -11,7 +11,11 @@ function ControlPanel(props) {
   const [searchResults, setSearchResults] = createSignal([]);
 
   const hasShape = () => props.currentShape() !== null;
-  const canSubmit = () => hasShape() && props.businessName().trim() !== "";
+
+  // --- THIS IS THE FIX ---
+  // We remove canSubmit() and handleSubmit()
+  // as they are no longer needed.
+  // -----------------------
 
   const actions = () =>
     typeof props.mapActions === "function" ? props.mapActions() : null;
@@ -82,52 +86,9 @@ function ControlPanel(props) {
     }
   };
 
-  const handleSubmit = async () => {
-    const businessName = props.businessName().trim();
-    const raw = props.geoJsonOutput();
-    let geoJsonFeature;
-
-    try {
-      geoJsonFeature = JSON.parse(raw);
-    } catch {
-      alert("No valid shape to submit. Please draw a shape first.");
-      return;
-    }
-
-    if (!businessName) {
-      alert("Please enter a business name before submitting.");
-      return;
-    }
-
-    const payload = {
-      business_name: businessName,
-      geometry: geoJsonFeature.geometry,
-    };
-
-    const backendUrl = "https://vouch-backend-208s.onrender.com/api/geofence";
-
-    if (confirm(`Submit geofence for "${businessName}"?`)) {
-      try {
-        const response = await fetch(backendUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || `HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        alert(`Success! ${data.message} (New ID: ${data.id})`);
-        handleClear();
-      } catch (error) {
-        console.error("Submission Error:", error);
-        alert("Submission Failed. Error: " + error.message);
-      }
-    }
-  };
+  // --- THIS IS THE FIX ---
+  // The entire handleSubmit function has been REMOVED.
+  // -----------------------
 
   return (
     <aside id="control-panel" class="sidebar">
@@ -235,17 +196,9 @@ function ControlPanel(props) {
         />
       </section>
 
-      {/* Section 4: Submit */}
-      <section class="panel-section">
-        <button
-          id="submitBtn"
-          class="control-button btn-primary lg"
-          onClick={handleSubmit}
-          disabled={!canSubmit()}
-        >
-          Final Submit
-        </button>
-      </section>
+      {/* --- THIS IS THE FIX ---
+        Section 4: Submit has been REMOVED.
+      ----------------------- */}
     </aside>
   );
 }

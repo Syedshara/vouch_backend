@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:vouch_app/app_theme.dart';
+import 'package:vouch/app_theme.dart';
 
 class ChangePasswordDialog extends StatefulWidget {
   const ChangePasswordDialog({super.key});

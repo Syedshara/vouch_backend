@@ -1,7 +1,8 @@
+// src/pages/LocationsPage.jsx
 "use client";
 
 import { createSignal, onMount, For, Show } from "solid-js";
-import { supabase, authHelpers } from "../lib/supabase";
+import { api } from "../lib/api"; // <-- IMPORT NEW API HELPER
 import GeofenceMap from "../components/GeofenceMap";
 import ControlPanel from "../components/ControlPanel";
 import LocationModal from "../components/LocationModal";
@@ -30,17 +31,13 @@ export default function LocationsPage() {
   });
 
   const loadLocations = async () => {
-    const { user } = await authHelpers.getUser();
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from("locations")
-      .select("*")
-      .eq("owner_id", user.id)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
+    setLoading(true);
+    try {
+      // --- THIS IS THE FIX ---
+      const data = await api.getLocations();
       setLocations(data);
+    } catch (error) {
+      setStatusText(`Error: ${error?.message}`);
     }
     setLoading(false);
   };
@@ -55,6 +52,7 @@ export default function LocationsPage() {
     setCategory("Restaurant");
     setDwellTime(5);
     setGeoJsonOutput("No shape drawn yet.");
+    mapActions()?.clearShape();
   };
 
   const handleEditLocation = (location) => {
@@ -64,77 +62,74 @@ export default function LocationsPage() {
 
   const handleDeleteLocation = async (locationId) => {
     if (!confirm("Are you sure you want to delete this location?")) return;
-
-    const { error } = await supabase
-      .from("locations")
-      .delete()
-      .eq("id", locationId);
-
-    if (!error) {
+    try {
+      // --- THIS IS THE FIX ---
+      await api.deleteLocation(locationId);
       await loadLocations();
       setStatusText("Location deleted successfully!");
-    } else {
+    } catch (error) {
       setStatusText(`Error: ${error?.message}`);
     }
   };
 
   const handleToggleActive = async (location) => {
-    const { error } = await supabase
-      .from("locations")
-      .update({ is_active: !location.is_active })
-      .eq("id", location.id);
-
-    if (!error) {
+    try {
+      // --- THIS IS THE FIX ---
+      // Send *only* the change
+      await api.updateLocation(location.id, {
+        is_active: !location.is_active,
+      });
       await loadLocations();
+    } catch (error) {
+      setStatusText(`Error: ${error?.message}`);
     }
   };
 
   const handleSaveLocation = async () => {
-    const { user } = await authHelpers.getUser();
-    if (!user || !currentShape()) return;
+    if (!currentShape()) {
+      setStatusText("Error: Please draw a geofence on the map first.");
+      return;
+    }
+    if (!businessName()) {
+      setStatusText("Error: Please enter a Location Name.");
+      return;
+    }
 
     const geofenceData = JSON.parse(geoJsonOutput());
 
     const locationData = {
-      owner_id: user.id,
-      name: businessName() || "Unnamed Location",
-      address: address() || "Address to be added",
+      name: businessName(),
+      address: address(),
       category: category(),
-      geofence: geofenceData,
+      geofence: geofenceData, // Send the full GeoJSON Feature
       dwell_time_minutes: dwellTime(),
-      is_active: true,
     };
 
-    const { data, error } = await supabase
-      .from("locations")
-      .insert([locationData])
-      .select();
-
-    if (!error && data) {
+    try {
+      // --- THIS IS THE FIX ---
+      await api.createLocation(locationData);
       await loadLocations();
       setIsCreating(false);
       setStatusText("Location saved successfully!");
-    } else {
+    } catch (error) {
       setStatusText(`Error: ${error?.message}`);
     }
   };
 
   const handleUpdateLocation = async (updatedData) => {
-    const { error } = await supabase
-      .from("locations")
-      .update(updatedData)
-      .eq("id", selectedLocation().id);
-
-    if (!error) {
+    try {
+      // --- THIS IS THE FIX ---
+      await api.updateLocation(selectedLocation().id, updatedData);
       await loadLocations();
       setIsEditing(false);
       setSelectedLocation(null);
       setStatusText("Location updated successfully!");
-    } else {
+    } catch (error) {
       setStatusText(`Error: ${error?.message}`);
     }
   };
 
+  // ... (Your JSX remains identical) ...
   return (
     <div class="page-container">
       <div class="page-header">
@@ -148,7 +143,6 @@ export default function LocationsPage() {
           Add Location
         </button>
       </div>
-
       <Show
         when={!loading()}
         fallback={<div class="loading">Loading locations...</div>}
@@ -158,7 +152,6 @@ export default function LocationsPage() {
             <Show when={isCreating()}>
               <div class="editor-form">
                 <h3 class="editor-form-title">Location Details</h3>
-
                 <div class="form-group">
                   <label class="form-label">Location Name</label>
                   <input
@@ -169,7 +162,6 @@ export default function LocationsPage() {
                     onInput={(e) => setBusinessName(e.target.value)}
                   />
                 </div>
-
                 <div class="form-group">
                   <label class="form-label">Address</label>
                   <input
@@ -180,7 +172,6 @@ export default function LocationsPage() {
                     onInput={(e) => setAddress(e.target.value)}
                   />
                 </div>
-
                 <div class="form-group">
                   <label class="form-label">Category</label>
                   <select
@@ -197,7 +188,6 @@ export default function LocationsPage() {
                     <option value="Other">Other</option>
                   </select>
                 </div>
-
                 <div class="form-group">
                   <label class="form-label">Dwell Time (minutes)</label>
                   <input
@@ -214,7 +204,6 @@ export default function LocationsPage() {
                     Minimum time a customer must spend to earn a vouch
                   </p>
                 </div>
-
                 <div class="editor-actions">
                   <button
                     class="btn-secondary"
@@ -231,7 +220,6 @@ export default function LocationsPage() {
                   </button>
                 </div>
               </div>
-
               <ControlPanel
                 currentShape={currentShape}
                 setCurrentShape={setCurrentShape}
@@ -246,7 +234,6 @@ export default function LocationsPage() {
                 mapActions={mapActions}
               />
             </Show>
-
             <Show when={!isCreating()}>
               <Show
                 when={locations().length > 0}
@@ -370,7 +357,6 @@ export default function LocationsPage() {
               </Show>
             </Show>
           </div>
-
           <div class="map-container">
             <GeofenceMap
               currentShape={currentShape}
@@ -384,7 +370,6 @@ export default function LocationsPage() {
           </div>
         </div>
       </Show>
-
       <Show when={isEditing()}>
         <LocationModal
           location={selectedLocation()}

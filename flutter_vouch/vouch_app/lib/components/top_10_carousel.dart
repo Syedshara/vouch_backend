@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
-import 'package:vouch_app/app_theme.dart';
+import 'package:vouch/app_theme.dart';
 
 class Top10Carousel extends StatelessWidget {
   final String title;
   final List<Map<String, String>> items;
-  final VoidCallback? onItemTap;
+  // --- FIX 1: Changed the function type ---
+  // FROM: final VoidCallback? onItemTap;
+  // TO:
+  final void Function(int index)? onItemTap;
 
   const Top10Carousel({
     super.key,
@@ -33,17 +36,22 @@ class Top10Carousel extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
-            itemBuilder: (context, index) {
+            itemBuilder: (context, index) { // <-- 'index' is available here
               final item = items[index];
               return FadeInRight(
                 delay: Duration(milliseconds: 50 * index),
                 child: GestureDetector(
-                  onTap: onItemTap,
+                  // --- FIX 2: Call the function with the index ---
+                  // FROM: onTap: onItemTap,
+                  // TO:
+                  onTap: () => onItemTap?.call(index),
                   child: Container(
                     width: 160,
                     margin: const EdgeInsets.only(right: 12),
+                    clipBehavior: Clip.antiAlias, // <-- ADD THIS
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
+                      color: AppTheme.surface, // Fallback color
                       image: item['image'] != null
                           ? DecorationImage(
                         image: NetworkImage(item['image']!),
@@ -68,18 +76,28 @@ class Top10Carousel extends StatelessWidget {
                               ),
                             ),
                           ),
+
+                        // --- ADDED Gradient Fade ---
                         Positioned(
-                          top: -20,
-                          right: -20,
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
                           child: Container(
-                            width: 100,
-                            height: 100,
+                            height: 100, // Adjust height of the fade
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.1),
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.black.withOpacity(0.9),
+                                  Colors.black.withOpacity(0.0),
+                                ],
+                              ),
                             ),
                           ),
                         ),
+                        // --- END OF Gradient ---
+
                         Padding(
                           padding: const EdgeInsets.all(12),
                           child: Column(
@@ -87,9 +105,11 @@ class Top10Carousel extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
+                                  // Use a darker, more subtle background
+                                  color: Colors.black.withOpacity(0.4),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -117,11 +137,13 @@ class Top10Carousel extends StatelessWidget {
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
-                                      Icon(Icons.star, size: 12, color: Colors.yellow[300]),
+                                      Icon(Icons.star,
+                                          size: 12, color: Colors.yellow[300]),
                                       const SizedBox(width: 4),
                                       Text(
                                         item['rating'] ?? '4.5',
-                                        style: const TextStyle(fontSize: 11, color: Colors.white),
+                                        style: const TextStyle(
+                                            fontSize: 11, color: Colors.white),
                                       ),
                                     ],
                                   ),

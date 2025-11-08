@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:vouch_app/app_theme.dart';
+import 'package:vouch/app_theme.dart';
 
 class AddReviewDialog extends StatefulWidget {
   final String businessId;
   final String businessName;
+  final String popToken; // <-- ADDED THIS
   final Function(double rating, String comment) onSubmit;
 
   const AddReviewDialog({
     super.key,
     required this.businessId,
     required this.businessName,
+    required this.popToken, // <-- ADDED THIS
     required this.onSubmit,
   });
 
@@ -28,21 +30,27 @@ class _AddReviewDialogState extends State<AddReviewDialog> {
     super.dispose();
   }
 
-  void _submitReview() {
+  // --- UPDATED to handle async submission ---
+  void _submitReview() async {
     if (_commentController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add a comment')),
+        const SnackBar(content: Text('Please add a comment'), backgroundColor: Colors.red),
       );
       return;
     }
 
     setState(() => _isSubmitting = true);
 
-    Future.delayed(const Duration(milliseconds: 500), () {
-      widget.onSubmit(_rating, _commentController.text);
-      Navigator.pop(context);
-    });
+    // This now calls the async function from the page
+    await widget.onSubmit(_rating, _commentController.text);
+
+    // Check if the widget is still mounted before interacting with context
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+      Navigator.pop(context); // Close the dialog
+    }
   }
+  // --- END UPDATE ---
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +125,7 @@ class _AddReviewDialogState extends State<AddReviewDialog> {
                             ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
                             : const Text('Submit'),
                       ),

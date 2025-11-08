@@ -1,12 +1,12 @@
 import { createSignal, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { authHelpers } from "../lib/supabase";
-import OtpInput from "../components/OtpInput"; // 1. Import your new component
+import OtpInput from "../components/OtpInput";
 
 export default function Login() {
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
-  const [otp, setOtp] = createSignal(""); // This signal will now be used by OtpInput
+  const [otp, setOtp] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal(null);
   const [step, setStep] = createSignal("password");
@@ -74,7 +74,6 @@ export default function Login() {
                   <label for="otp" class="form-label">
                     Verification Code
                   </label>
-                  {/* 2. Replace the old input with the new OtpInput component */}
                   <OtpInput value={otp} onInput={setOtp} />
                 </div>
                 {error() && <div class="error-message">{error()}</div>}
@@ -90,7 +89,7 @@ export default function Login() {
           }
         >
           <>
-            {/* Password View (no changes needed here) */}
+            {/* Password View */}
             <div class="auth-header">
               <h1 class="auth-title">Welcome Back</h1>
             </div>
@@ -125,6 +124,15 @@ export default function Login() {
               <button type="submit" class="btn-primary" disabled={isLoading()}>
                 {isLoading() ? "Continuing..." : "Continue"}
               </button>
+
+              {/* --- THIS IS THE NEW CODE --- */}
+              <div class="auth-footer">
+                Don't have an account?{" "}
+                <a href="/signup" class="auth-link">
+                  Sign Up
+                </a>
+              </div>
+              {/* --- END OF NEW CODE --- */}
             </form>
           </>
         </Show>

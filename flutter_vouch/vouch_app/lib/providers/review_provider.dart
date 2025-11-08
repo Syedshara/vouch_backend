@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:vouch/api_config.dart';
+import 'package:vouch/services/auth_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
+// --- Tip Model (Unchanged) ---
 class Tip {
   final String id;
   final String userId;
@@ -18,68 +23,50 @@ class Tip {
   });
 }
 
+// --- Review Model (Updated) ---
 class Review {
   final String id;
-  final String businessId;
-  final String userId;
   final String userName;
   final double rating;
   final String comment;
-  final List<String>? photoUrls;
   final DateTime createdAt;
-  final bool isVerified; // Has Vouch
+  final bool isVerified; // This will always be true from our backend
 
   Review({
     required this.id,
-    required this.businessId,
-    required this.userId,
     required this.userName,
     required this.rating,
     required this.comment,
-    this.photoUrls,
     required this.createdAt,
     this.isVerified = true,
   });
+
+  factory Review.fromJson(Map<String, dynamic> json) {
+    // This factory now matches the backend response
+    String userName = 'A Customer';
+    if (json['customers'] != null) {
+      userName = json['customers']['name'] ?? userName;
+    }
+
+    return Review(
+      id: json['id'],
+      userName: userName,
+      rating: (json['rating'] as num).toDouble(),
+      comment: json['comment'] ?? '',
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
 }
 
 class ReviewProvider with ChangeNotifier {
-  final Map<String, List<Review>> _businessReviews = {
-    'annapoorna': [
-      Review(
-        id: '1',
-        businessId: 'annapoorna',
-        userId: 'user1',
-        userName: 'Raj Kumar',
-        rating: 5,
-        comment: 'Amazing filter coffee! Best in the city.',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-        isVerified: true,
-      ),
-      Review(
-        id: '2',
-        businessId: 'annapoorna',
-        userId: 'user2',
-        userName: 'Priya Singh',
-        rating: 4.5,
-        comment: 'Great ambiance and friendly staff.',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-        isVerified: true,
-      ),
-    ],
-    'brookfields': [
-      Review(
-        id: '3',
-        businessId: 'brookfields',
-        userId: 'user3',
-        userName: 'Amit Patel',
-        rating: 4,
-        comment: 'Good shopping experience, parking could be better.',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        isVerified: true,
-      ),
-    ],
-  };
+  final AuthService _authService;
+  ReviewProvider(this._authService);
 
+  // --- Switched to real data ---
+  final Map<String, List<Review>> _businessReviews = {};
+  bool _isLoading = false;
+
+  // --- Tip logic is still mock data (unchanged) ---
   final Map<String, List<Tip>> _businessTips = {
     'annapoorna': [
       Tip(
@@ -90,27 +77,11 @@ class ReviewProvider with ChangeNotifier {
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
         upvotes: 12,
       ),
-      Tip(
-        id: '2',
-        userId: 'user2',
-        userName: 'Priya Singh',
-        content: 'Visit during morning for fresh dosas.',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        upvotes: 8,
-      ),
-    ],
-    'brookfields': [
-      Tip(
-        id: '3',
-        userId: 'user3',
-        userName: 'Amit Patel',
-        content: 'Parking is difficult on weekends.',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-        upvotes: 15,
-      ),
     ],
   };
 
+  // --- Public Getters ---
+  bool get isLoading => _isLoading;
   List<Review> getBusinessReviews(String businessId) {
     return _businessReviews[businessId] ?? [];
   }
@@ -123,18 +94,78 @@ class ReviewProvider with ChangeNotifier {
 
   double getAverageRating(String businessId) {
     final reviews = getBusinessReviews(businessId);
-    if (reviews.isEmpty) return 0;
+    if (reviews.isEmpty) return 0; // Use 0 for no reviews
     return reviews.fold(0.0, (sum, review) => sum + review.rating) / reviews.length;
   }
 
-  void addReview(Review review) {
-    if (!_businessReviews.containsKey(review.businessId)) {
-      _businessReviews[review.businessId] = [];
+  // --- NEW: Fetch Real Reviews ---
+  Future<void> fetchReviews(String businessId) async {
+    // If we already have them, don't re-fetch
+    if (_businessReviews.containsKey(businessId)) return;
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/public/reviews/$businessId'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        _businessReviews[businessId] = data.map((json) => Review.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print("Error fetching reviews: $e");
     }
-    _businessReviews[review.businessId]!.insert(0, review);
+
+    _isLoading = false;
     notifyListeners();
   }
 
+  // --- NEW: Submit a Verified Review ---
+  Future<String?> submitReview({
+    required String businessId,
+    required String popToken,
+    required double rating,
+    required String comment,
+  }) async {
+    final token = await _authService.getAuthToken();
+    if (token == null) return "You must be logged in.";
+
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/reviews'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'location_id': businessId,
+          'pop_token': popToken,
+          'rating': rating,
+          'comment': comment,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 201) {
+        // Success!
+        _businessReviews.remove(businessId); // Clear cache
+        await fetchReviews(businessId); // Refetch
+        return null; // Return null for success
+      } else {
+        // Return the error message from the server
+        return data['error'] ?? 'Failed to submit review.';
+      }
+    } catch (e) {
+      print("Error submitting review: $e");
+      return "An error occurred. Please try again.";
+    }
+  }
+
+  // --- Tip logic is unchanged ---
   void addTip(String businessId, Tip tip) {
     if (!_businessTips.containsKey(businessId)) {
       _businessTips[businessId] = [];

@@ -1,106 +1,95 @@
+// src/pages/CampaignsPage.jsx
 import { createSignal, onMount, For, Show } from "solid-js";
-import { supabase, authHelpers } from "../lib/supabase";
+import { api } from "../lib/api"; // <-- IMPORT NEW API HELPER
 import CampaignModal from "../components/CampaignModal";
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = createSignal([]);
   const [locations, setLocations] = createSignal([]);
+  const [rewards, setRewards] = createSignal([]); // <-- ADD THIS
   const [loading, setLoading] = createSignal(true);
   const [isCreating, setIsCreating] = createSignal(false);
   const [isEditing, setIsEditing] = createSignal(false);
   const [selectedCampaign, setSelectedCampaign] = createSignal(null);
 
   onMount(async () => {
-    await Promise.all([loadCampaigns(), loadLocations()]);
+    setLoading(true);
+    // Load locations, campaigns, AND rewards
+    await Promise.all([loadCampaigns(), loadLocations(), loadRewards()]); // <-- ADD loadRewards()
+    setLoading(false);
   });
 
   const loadCampaigns = async () => {
-    const { user } = await authHelpers.getUser();
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from("campaigns")
-      .select(
-        `
-        *,
-        locations (
-          id,
-          name
-        )
-      `
-      )
-      .eq("owner_id", user.id)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
+    try {
+      const data = await api.getCampaigns();
       setCampaigns(data);
+    } catch (error) {
+      console.error("Error loading campaigns:", error);
     }
-    setLoading(false);
   };
 
   const loadLocations = async () => {
-    const { user } = await authHelpers.getUser();
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("locations")
-      .select("id, name")
-      .eq("owner_id", user.id)
-      .eq("is_active", true);
-
-    if (data) {
-      setLocations(data);
+    try {
+      const data = await api.getLocations();
+      setLocations(data.filter((loc) => loc.is_active));
+    } catch (error) {
+      console.error("Error loading locations:", error);
     }
   };
 
+  // --- ADD THIS NEW FUNCTION ---
+  const loadRewards = async () => {
+    try {
+      const data = await api.getRewards();
+      setRewards(data);
+    } catch (error) {
+      console.error("Error loading rewards:", error);
+    }
+  };
+  // --- END NEW FUNCTION ---
+
   const handleCreateCampaign = async (campaignData) => {
-    const { user } = await authHelpers.getUser();
-    if (!user) return;
-
-    const { error } = await supabase
-      .from("campaigns")
-      .insert([{ ...campaignData, owner_id: user.id }]);
-
-    if (!error) {
+    try {
+      await api.createCampaign(campaignData);
       await loadCampaigns();
       setIsCreating(false);
+    } catch (error) {
+      console.error("Error creating campaign:", error);
+      alert(`Error: ${error.message}`);
     }
   };
 
   const handleUpdateCampaign = async (campaignData) => {
-    const { error } = await supabase
-      .from("campaigns")
-      .update(campaignData)
-      .eq("id", selectedCampaign().id);
-
-    if (!error) {
+    try {
+      await api.updateCampaign(selectedCampaign().id, campaignData);
       await loadCampaigns();
       setIsEditing(false);
       setSelectedCampaign(null);
+    } catch (error) {
+      console.error("Error updating campaign:", error);
+      alert(`Error: ${error.message}`);
     }
   };
 
   const handleDeleteCampaign = async (campaignId) => {
     if (!confirm("Are you sure you want to delete this campaign?")) return;
-
-    const { error } = await supabase
-      .from("campaigns")
-      .delete()
-      .eq("id", campaignId);
-
-    if (!error) {
+    try {
+      await api.deleteCampaign(campaignId);
       await loadCampaigns();
+    } catch (error) {
+      console.error("Error deleting campaign:", error);
     }
   };
 
   const handleToggleActive = async (campaign) => {
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ is_active: !campaign.is_active })
-      .eq("id", campaign.id);
-
-    if (!error) {
+    try {
+      // This is correct because our backend PUT just updates req.body
+      await api.updateCampaign(campaign.id, {
+        is_active: !campaign.is_active,
+      });
       await loadCampaigns();
+    } catch (error) {
+      console.error("Error toggling campaign:", error);
     }
   };
 
@@ -114,6 +103,7 @@ export default function CampaignsPage() {
     return labels[type] || type;
   };
 
+  // ... (Your JSX remains identical) ...
   return (
     <div class="page-container">
       <div class="page-header">
@@ -125,7 +115,6 @@ export default function CampaignsPage() {
           Create Campaign
         </button>
       </div>
-
       <Show
         when={!loading()}
         fallback={<div class="loading">Loading campaigns...</div>}
@@ -136,7 +125,7 @@ export default function CampaignsPage() {
             <div class="empty-state">
               <svg
                 class="empty-icon"
-                viewBox="0 0 24 24"
+                viewBox="0 0 24"
                 fill="none"
                 stroke="currentColor"
               >
@@ -172,11 +161,9 @@ export default function CampaignsPage() {
                       {campaign.is_active ? "Active" : "Inactive"}
                     </span>
                   </div>
-
                   <p class="campaign-card-description">
                     {campaign.description}
                   </p>
-
                   <div class="campaign-card-details">
                     <div class="campaign-detail-item">
                       <span class="detail-label">Reward</span>
@@ -197,25 +184,19 @@ export default function CampaignsPage() {
                       </div>
                     </Show>
                   </div>
-
                   <div class="campaign-card-dates">
                     <span class="date-text">
                       {new Date(campaign.start_date).toLocaleDateString()} -{" "}
                       {new Date(campaign.end_date).toLocaleDateString()}
                     </span>
                   </div>
-
                   <div class="campaign-card-actions">
                     <button
                       class="btn-icon-sm"
                       onClick={() => handleToggleActive(campaign)}
                       title={campaign.is_active ? "Deactivate" : "Activate"}
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                      >
+                      <svg viewBox="0 0 24" fill="none" stroke="currentColor">
                         <circle cx="12" cy="12" r="10" />
                         <line x1="12" y1="8" x2="12" y2="12" />
                         <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -229,11 +210,7 @@ export default function CampaignsPage() {
                       }}
                       title="Edit"
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                      >
+                      <svg viewBox="0 0 24" fill="none" stroke="currentColor">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                       </svg>
@@ -243,11 +220,7 @@ export default function CampaignsPage() {
                       onClick={() => handleDeleteCampaign(campaign.id)}
                       title="Delete"
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                      >
+                      <svg viewBox="0 0 24" fill="none" stroke="currentColor">
                         <polyline points="3 6 5 6 21 6" />
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>
@@ -259,19 +232,19 @@ export default function CampaignsPage() {
           </div>
         </Show>
       </Show>
-
       <Show when={isCreating()}>
         <CampaignModal
           locations={locations()}
+          rewards={rewards()}
           onClose={() => setIsCreating(false)}
           onSave={handleCreateCampaign}
         />
       </Show>
-
       <Show when={isEditing()}>
         <CampaignModal
           campaign={selectedCampaign()}
           locations={locations()}
+          rewards={rewards()}
           onClose={() => {
             setIsEditing(false);
             setSelectedCampaign(null);

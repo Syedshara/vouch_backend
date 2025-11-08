@@ -1,11 +1,14 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, For } from "solid-js";
 
 export default function CampaignModal(props) {
   const [name, setName] = createSignal("");
   const [description, setDescription] = createSignal("");
   const [campaignType, setCampaignType] = createSignal("visit_count");
   const [targetValue, setTargetValue] = createSignal(5);
-  const [rewardDescription, setRewardDescription] = createSignal("");
+  // --- MODIFIED ---
+  const [rewardId, setRewardId] = createSignal(""); // Stores the ID
+  const [rewardDescription, setRewardDescription] = createSignal(""); // Stores the name/desc
+  // --- END MODIFICATION ---
   const [locationId, setLocationId] = createSignal("");
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
@@ -17,7 +20,10 @@ export default function CampaignModal(props) {
       setDescription(props.campaign.description || "");
       setCampaignType(props.campaign.campaign_type);
       setTargetValue(props.campaign.target_value);
-      setRewardDescription(props.campaign.reward_description);
+      // --- MODIFIED ---
+      setRewardId(props.campaign.reward_id || "");
+      setRewardDescription(props.campaign.reward_description || "");
+      // --- END MODIFICATION ---
       setLocationId(props.campaign.location_id || "");
       setStartDate(props.campaign.start_date?.split("T")[0] || "");
       setEndDate(props.campaign.end_date?.split("T")[0] || "");
@@ -34,23 +40,39 @@ export default function CampaignModal(props) {
   });
 
   const handleSave = () => {
-    if (!name() || !rewardDescription() || !startDate() || !endDate()) {
-      alert("Please fill in all required fields");
+    // --- UPDATED VALIDATION ---
+    if (!name() || !rewardId() || !startDate() || !endDate()) {
+      alert("Please fill in all required fields (Name, Reward, Dates)");
       return;
     }
+    // --- END UPDATE ---
 
     props.onSave({
       name: name(),
       description: description(),
       campaign_type: campaignType(),
       target_value: targetValue(),
+      // --- UPDATED REWARD FIELDS ---
+      reward_id: rewardId(),
       reward_description: rewardDescription(),
+      // --- END UPDATE ---
       location_id: locationId() || null,
       start_date: startDate(),
       end_date: endDate(),
       is_active: isActive(),
     });
   };
+
+  // --- NEW: Handle reward dropdown change ---
+  const onRewardChange = (e) => {
+    const selectedId = e.target.value;
+    const selectedReward = props.rewards.find((r) => r.id === selectedId);
+
+    setRewardId(selectedId);
+    // We use the reward's name as the description for the campaign
+    setRewardDescription(selectedReward ? selectedReward.name : "");
+  };
+  // --- END NEW FUNCTION ---
 
   return (
     <div class="modal-overlay" onClick={props.onClose}>
@@ -129,16 +151,25 @@ export default function CampaignModal(props) {
             </div>
           </div>
 
+          {/* --- THIS IS THE REPLACEMENT --- */}
           <div class="form-group">
-            <label class="form-label">Reward Description *</label>
-            <input
-              type="text"
+            <label class="form-label">Reward *</label>
+            <select
               class="form-input"
-              placeholder="Free coffee, 20% off, etc."
-              value={rewardDescription()}
-              onInput={(e) => setRewardDescription(e.target.value)}
-            />
+              value={rewardId()}
+              onChange={onRewardChange}
+            >
+              <option value="">-- Select a Reward --</option>
+              <For each={props.rewards}>
+                {(reward) => <option value={reward.id}>{reward.name}</option>}
+              </For>
+            </select>
+            <p class="form-hint">
+              This is the reward the customer will earn. Manage rewards in a
+              future "Rewards" tab.
+            </p>
           </div>
+          {/* --- END REPLACEMENT --- */}
 
           <div class="form-group">
             <label class="form-label">Location (Optional)</label>

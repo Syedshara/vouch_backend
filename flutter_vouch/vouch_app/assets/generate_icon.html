@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vouch Icon Generator</title>
+</head>
+<body>
+    <canvas id="canvas" width="1024" height="1024"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        // Draw background circle
+        ctx.fillStyle = '#6C63FF';
+        ctx.beginPath();
+        ctx.arc(512, 512, 492, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#5A54E0';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+        // Draw shield
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.moveTo(512, 154);
+        ctx.lineTo(768, 230);
+        ctx.lineTo(768, 486);
+        ctx.quadraticCurveTo(768, 640, 512, 768);
+        ctx.quadraticCurveTo(256, 640, 256, 486);
+        ctx.lineTo(256, 230);
+        ctx.closePath();
+        ctx.fill();
+        // Draw inner shield
+        ctx.fillStyle = '#<!DOCTYPE html>
+<html>
+<head>
+    <title>Vouch Icon Generator</title>
+</head>
+<body>
+    <canvas id="canvas" wio(<html>
+<head>
+  <headx.    <at</head>
+<body>
+    <canvas id="canvas" c<body>dr    <ur    <script>
+        const canvas = document.getElementById          coneP        const ctx = canvas.getContext('2d');
+        //           // Draw background circle
+        cin        ctx.fillStyle = '#6C63FF =        ctx.beginPath();
+        'r        ctx.arc(512, 51nP        ctx.fill();
+        ctx.strokeStyle = tx        ctx.stroke
+         ctx.lineWidth = 6;
+                  ctx.stroke();
+   Do        // Draw shie          ctx.fillStyleti        ctx.beginPath();
+      l         ctx.moveTo(512,lo        ctx.lineTo(768, 230)cu        ctx.lineTo(768, 486)          ctx.quadraticCurveTo          ctx.quadraticCurveTo(256, 640, 256, 486).b        ctx.lineTo(256, 230);
+        ctx.closeP          ctx.closePath();
+   /h        ctx.fill();
+   co       cd /Users/mog/Documents/GitHub/vouch_backend/flutter_vouch/vouch_app/assets && node -e "
+const fs = require('fs');
+// Create a simple SVG that can be converted
+const svg = \`<svg width=\"1024\" height=\"1024\" xmlns=\"http://www.w3.org/2000/svg\">
+  <circle cx=\"512\" cy=\"512\" r=\"492\" fill=\"#6C63FF\" stroke=\"#5A54E0\" stroke-width=\"6\"/>
+  <path d=\"M 512 154 L 768 230 L 768 486 Q 768 640 512 768 Q 256 640 256 486 L 256 230 Z\" fill=\"white\"/>
+  <path d=\"M 512 230 L 717 288 L 717 486 Q 717 595 512 691 Q 307 595 307 486 L 307 288 Z\" fill=\"#6C63FF\"/>
+  <path d=\"M 390 512 L 461 589 L 634 397\" stroke=\"white\" stroke-width=\"60\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/>
+</svg>\`;
+fs.writeFileSync('icon.svg', svg);
+console.log('Created icon.svg');
+// Create foreground SVG
+const svgFg = \`<svg width=\"1024\" height=\"1024\" xmlns=\"http://www.w3.org/2000/svg\">
+  <path d=\"M 512 154 L 768 230 L 768 486 Q 768 640 512 768 Q 256 640 256 486 L 256 230 Z\" fill=\"white\"/>
+  <pathconst fs = require('fs');
+// Create a simple SVG that can be converted
+const svg = \`<sll// Create a simple SVG t=\const svg = \`<svg width=\"1024\" height=\"hi  <circle cx=\"512\" cy=\"512\" r=\"492\" fill=\"#6C63FF\" stroke=\"#5A54E0\" stroke-we\  <path d=\"M 512 154 L 768 230 L 768 486 Q 768 640 512 768 Q 256 640 256 486 L 256 230 Z\" fill=d.  <path dcd /Users/mog/Documents/GitHub/vouch_backend/flutter_vouch/vouch_app/assets && cat > icon.svg << 'EOF'
+<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="512" cy="512" r="492" fill="#6C63FF" stroke="#5A54E0" stroke-width="6"/>
+  <path d="M 512 154 L 768 230 L 768 486 Q 768 640 512 768 Q 256 640 256 486 L 256 230 Z" fill="white"/>
+  <path d="M 512 230 L 717 288 L 717 486 Q 717 595 512 691 Q 307 595 307 486 L 307 288 Z" fill="#6C63FF"/>
+  <path d="M 390 512 L 461 589 L 634 397" stroke="white" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

@@ -1,0 +1,410 @@
+-- --------------------------------------------------
+-- PHASE 1: ENABLE EXTENSIONS
+-- --------------------------------------------------
+-- Enable PostGIS for mapping (needed for geofences)
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+
+-- --------------------------------------------------
+-- PHASE 2: TABLE DEFINITIONS
+-- (These are the tables shown in your screenshot)
+-- --------------------------------------------------
+
+-- Stores admin (Business Owner) profile data
+CREATE TABLE "business_profiles" (
+    "id" uuid NOT NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    "business_name" text,
+    "email" text UNIQUE,
+    "phone" text,
+    "website" text,
+    "description" text,
+    "updated_at" timestamptz DEFAULT now()
+);
+
+-- Stores customer (Flutter App User) profile data
+CREATE TABLE "customers" (
+    "id" uuid NOT NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    "name" text,
+    "email" text UNIQUE,
+    "phone" text,
+    "avatar_url" text,
+    "created_at" timestamptz DEFAULT now()
+);
+
+-- Stores the rewards an admin can offer (e.g., "Free Coffee")
+CREATE TABLE "rewards" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "owner_id" uuid NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+    "name" text NOT NULL,
+    "description" text,
+    "is_active" boolean DEFAULT true NOT NULL
+);
+
+-- Stores multiple business locations/branches per owner
+CREATE TABLE "locations" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "owner_id" uuid NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+    "name" text NOT NULL,
+    "address" text,
+    "category" text,
+    "geofence" geometry(Geometry, 4326) NOT NULL, -- The PostGIS geofence polygon
+    "dwell_time_minutes" int DEFAULT 5 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamptz DEFAULT now()
+);
+
+-- Stores loyalty campaigns and their rules
+CREATE TABLE "campaigns" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "owner_id" uuid NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+    "reward_id" uuid NOT NULL REFERENCES rewards(id) ON DELETE CASCADE,
+    "location_id" uuid REFERENCES locations(id) ON DELETE SET NULL, -- NULL = All locations
+    "name" text NOT NULL,
+    "description" text,
+    "campaign_type" text NOT NULL,
+    "target_value" int NOT NULL,
+    "reward_description" text NOT NULL,
+    "partner_location_id" uuid REFERENCES locations(id) ON DELETE SET NULL,
+    "time_window_hours" int,
+    "start_date" date NOT NULL,
+    "end_date" date NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_at" timestamptz DEFAULT now()
+);
+
+-- The "Vouch" table. Stores all proof-of-presence and rewards.
+CREATE TABLE "loyalty_transactions" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "customer_id" uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    "location_id" uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    "business_id" uuid NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+    "campaign_id" uuid REFERENCES campaigns(id) ON DELETE SET NULL,
+    "transaction_type" text NOT NULL, -- 'earn_vouch' or 'redeem_reward'
+    "points_change" int DEFAULT 1 NOT NULL,
+    "created_at" timestamptz DEFAULT now()
+);
+
+
+-- --------------------------------------------------
+-- PHASE 3: FUNCTION DEFINITIONS
+-- --------------------------------------------------
+
+-- FUNCTION 1: handle_new_user()
+-- Purpose: Automatically creates a profile when a new user signs up.
+--
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER -- Has admin rights to write to public tables
+AS $$
+BEGIN
+  -- Check for 'admin' role from the SolidJS signup
+  IF NEW.raw_user_meta_data->>'role' = 'admin' THEN
+    INSERT INTO public.business_profiles (id, email, business_name)
+    VALUES (
+      NEW.id,
+      NEW.email,
+      NEW.raw_user_meta_data->>'business_name'
+    );
+  
+  -- Check for 'customer' role from the Flutter signup
+  ELSIF NEW.raw_user_meta_data->>'role' = 'customer' THEN
+    INSERT INTO public.customers (id, email)
+    VALUES (
+      NEW.id,
+      NEW.email
+    );
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+
+-- FUNCTION 2: get_public_locations()
+-- Purpose: RPC for the Node.js server to get all shop data for the Flutter app.
+--
+CREATE OR REPLACE FUNCTION get_public_locations(
+  sort_by text DEFAULT 'new'
+)
+RETURNS TABLE (
+  id uuid,
+  name text,
+  address text,
+  category text,
+  latitude double precision,
+  longitude double precision,
+  geofence_json text,
+  vouch_count bigint,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER -- Gives permission to read public tables
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    loc.id,
+    loc.name,
+    loc.address,
+    loc.category,
+    ST_Y(ST_Centroid(loc.geofence)) AS latitude,  -- Get Lat from polygon center
+    ST_X(ST_Centroid(loc.geofence)) AS longitude, -- Get Lon from polygon center
+    ST_AsGeoJSON(loc.geofence) AS geofence_json, -- Get the full polygon shape
+    COUNT(lt.id) AS vouch_count,
+    loc.created_at
+  FROM
+    public.locations AS loc
+  LEFT JOIN
+    public.loyalty_transactions AS lt ON loc.id = lt.location_id AND lt.transaction_type = 'earn_vouch'
+  WHERE
+    loc.is_active = true
+  GROUP BY
+    loc.id
+  ORDER BY
+    CASE WHEN sort_by = 'new' THEN loc.created_at END DESC,
+    CASE WHEN sort_by = 'top' THEN COUNT(lt.id) END DESC NULLS LAST
+  LIMIT 20;
+END;
+$$;
+
+
+-- FUNCTION 3: is_user_in_geofence()
+-- Purpose: RPC for the Node.js server to securely check if a user is inside a geofence.
+--
+CREATE OR REPLACE FUNCTION is_user_in_geofence(
+    loc_id uuid,
+    user_lon float,
+    user_lat float
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    is_inside boolean;
+BEGIN
+    SELECT ST_Within(
+        ST_SetSRID(ST_MakePoint(user_lon, user_lat), 4326), -- User's point
+        geofence                                       -- Location's polygon
+    )
+    INTO is_inside
+    FROM public.locations
+    WHERE id = loc_id;
+
+    RETURN is_inside;
+END;
+$$;
+
+
+-- --------------------------------------------------
+-- PHASE 4: TRIGGER DEFINITION
+-- --------------------------------------------------
+
+-- TRIGGER 1: on_auth_user_created
+-- Purpose: Calls handle_new_user() AFTER a new user signs up.
+--
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+
+  -- This table stores the "start time" of a vouch attempt
+CREATE TABLE "vouch_attempts" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "customer_id" uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  "location_id" uuid NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  "start_time" timestamptz NOT NULL DEFAULT now(),
+  "status" text DEFAULT 'pending' NOT NULL, -- 'pending', 'completed'
+  -- Ensures a user can only have one pending attempt per location
+  UNIQUE(customer_id, location_id, status)
+);
+
+-- Enable RLS
+ALTER TABLE "vouch_attempts" ENABLE ROW LEVEL SECURITY;
+
+-- Create policies so users can manage their own attempts
+CREATE POLICY "Users can manage their own vouch attempts"
+  ON "vouch_attempts" FOR ALL
+  USING (auth.uid() = customer_id)
+  WITH CHECK (auth.uid() = customer_id);
+
+  ALTER TABLE "loyalty_transactions"
+ADD COLUMN "pop_token" text UNIQUE;
+
+
+CREATE TABLE "notifications" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "customer_id" uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  "title" text NOT NULL,
+  "body" text,
+  "created_at" timestamptz DEFAULT now(),
+  "is_read" boolean DEFAULT false NOT NULL
+);
+
+-- Enable RLS and allow users to read their own notifications
+ALTER TABLE "notifications" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read their own notifications"
+  ON "notifications" FOR SELECT
+  USING (auth.uid() = customer_id);
+
+
+
+
+CREATE OR REPLACE FUNCTION public.handle_new_vouch()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  business_name text;
+BEGIN
+  -- Find the name of the business from the location_id
+  SELECT name INTO business_name
+  FROM public.locations
+  WHERE id = NEW.location_id;
+
+  -- Insert a new row into the public.notifications table
+  INSERT INTO public.notifications (customer_id, title, body)
+  VALUES (
+    NEW.customer_id,
+    'Vouch Collected!',
+    'You earned a Proof-of-Presence token at ' || COALESCE(business_name, 'a location') || '.'
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+
+CREATE TRIGGER on_vouch_created
+  AFTER INSERT ON public.loyalty_transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_vouch();
+
+
+  -- Create the table to store reviews
+CREATE TABLE "reviews" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "loyalty_transaction_id" uuid NOT NULL UNIQUE REFERENCES public.loyalty_transactions(id) ON DELETE CASCADE,
+  "customer_id" uuid NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+  "location_id" uuid NOT NULL REFERENCES public.locations(id) ON DELETE CASCADE,
+  "business_id" uuid NOT NULL REFERENCES public.business_profiles(id) ON DELETE CASCADE,
+  "rating" float NOT NULL,
+  "comment" text,
+  "created_at" timestamptz DEFAULT now()
+);
+
+-- Enable RLS
+ALTER TABLE "reviews" ENABLE ROW LEVEL SECURITY;
+
+-- Allow anyone to read all reviews
+CREATE POLICY "Public can read all reviews"
+  ON "reviews" FOR SELECT
+  USING (true);
+
+-- Allow users to insert a review IF they are the customer
+CREATE POLICY "Users can insert their own reviews"
+  ON "reviews" FOR INSERT
+  WITH CHECK (auth.uid() = customer_id);
+
+-- Allow users to delete their own reviews
+CREATE POLICY "Users can delete their own reviews"
+  ON "reviews" FOR DELETE
+  USING (auth.uid() = customer_id);
+
+-- --------------------------------------------------
+-- PHASE 5: CUSTOMER REWARDS (VOUCHERS)
+-- --------------------------------------------------
+
+-- This table stores the actual, generated vouchers for a customer
+CREATE TABLE "customer_rewards" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "customer_id" uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  "campaign_id" uuid NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  "business_id" uuid NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  "location_id" uuid REFERENCES locations(id) ON DELETE SET NULL, -- Location where it was earned
+  "reward_description" text NOT NULL, -- e.g., "Free Coffee" (copied from campaign)
+  "unique_token" text NOT NULL UNIQUE, -- The secure token for the QR code
+  "status" text NOT NULL DEFAULT 'active', -- 'active', 'redeemed', 'expired'
+  "created_at" timestamz DEFAULT now(),
+  "redeemed_at" timestamptz
+);
+
+-- Enable RLS
+ALTER TABLE "customer_rewards" ENABLE ROW LEVEL SECURITY;
+
+-- Allow users to read their own rewards
+CREATE POLICY "Users can read their own rewards"
+  ON "customer_rewards" FOR SELECT
+  USING (auth.uid() = customer_id);
+
+-- Allow business owners to read rewards linked to them (for verification)
+CREATE POLICY "Businesses can read rewards for their business"
+  ON "customer_rewards" FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM business_profiles
+      WHERE business_profiles.id = auth.uid() AND business_profiles.id = customer_rewards.business_id
+    )
+  );
+
+-- Allow business owners to update the status (redeem)
+CREATE POLICY "Businesses can redeem rewards"
+  ON "customer_rewards" FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM business_profiles
+      WHERE business_profiles.id = auth.uid() AND business_profiles.id = customer_rewards.business_id
+    )
+  )
+  WITH CHECK (
+    auth.uid() = business_id
+  );
+
+  
+
+
+  -- --- db.txt (Additions) ---
+
+-- 1. Enable RLS on the customers table
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+
+-- 2. Allow users to SELECT their own profile
+CREATE POLICY "Users can read their own customer profile"
+  ON public.customers FOR SELECT
+  USING ( auth.uid() = id );
+
+-- 3. Allow users to UPDATE their own profile (name, phone, avatar_url)
+CREATE POLICY "Users can update their own customer profile"
+  ON public.customers FOR UPDATE
+  USING ( auth.uid() = id )
+  WITH CHECK ( auth.uid() = id );
+
+-- 4. Create a storage bucket for profile pictures
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 5. Allow users to upload to the 'avatars' bucket (if authenticated)
+CREATE POLICY "Authenticated users can upload avatars"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK ( bucket_id = 'avatars' );
+
+-- 6. Allow users to update their own avatar
+CREATE POLICY "Users can update their own avatar"
+  ON storage.objects FOR UPDATE
+  TO authenticated
+  USING ( auth.uid() = owner )
+  WITH CHECK ( bucket_id = 'avatars' );
+
+-- 7. Allow anyone to view avatars (since the bucket is public)
+CREATE POLICY "Anyone can view avatars"
+  ON storage.objects FOR SELECT
+  USING ( bucket_id = 'avatars' );

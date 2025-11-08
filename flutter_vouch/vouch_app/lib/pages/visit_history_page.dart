@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animate_do/animate_do.dart';
-import 'package:vouch_app/providers/visit_provider.dart';
-import 'package:vouch_app/app_theme.dart';
+import 'package:vouch/providers/visit_provider.dart';
+import 'package:vouch/app_theme.dart';
 
 class VisitHistoryPage extends StatelessWidget {
   const VisitHistoryPage({super.key});

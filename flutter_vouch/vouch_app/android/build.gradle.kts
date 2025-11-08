@@ -19,3 +19,19 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+subprojects {
+    plugins.withId("com.android.application") {
+        extensions.findByType<com.android.build.gradle.BaseExtension>()?.apply {
+            if (namespace.isNullOrEmpty()) {
+                namespace = "com.example.${project.name.replace("-", "_")}"
+            }
+        }
+    }
+    plugins.withId("com.android.library") {
+        extensions.findByType<com.android.build.gradle.BaseExtension>()?.apply {
+            if (namespace.isNullOrEmpty()) {
+                namespace = "com.example.${project.name.replace("-", "_")}"
+            }
+        }
+    }
+}

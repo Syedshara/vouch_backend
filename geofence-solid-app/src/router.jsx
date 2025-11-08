@@ -1,7 +1,6 @@
 // src/router.jsx
 
 import { lazy } from "solid-js";
-// CORRECTED: The import does not use 'Routes'
 import { Router, Route } from "@solidjs/router";
 
 // --- Lazy load pages for better performance ---
@@ -13,8 +12,9 @@ const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
 const CampaignsPage = lazy(() => import("./pages/CampaignsPage"));
 const ReviewsPage = lazy(() => import("./pages/ReviewsPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+// --- ADD NEW LAZY IMPORT ---
+const ScannerPage = lazy(() => import("./pages/ScannerPage"));
 
-// CORRECTED: Define routes as an array for this version of the router
 const routes = [
   {
     path: "/login",
@@ -29,6 +29,8 @@ const routes = [
     component: DashboardLayout,
     children: [
       { path: "/", component: LocationsPage },
+      // --- ADD NEW ROUTE ---
+      { path: "/scanner", component: ScannerPage },
       { path: "/analytics", component: AnalyticsPage },
       { path: "/campaigns", component: CampaignsPage },
       { path: "/reviews", component: ReviewsPage },
@@ -38,6 +40,5 @@ const routes = [
 ];
 
 export default function AppRouter() {
-  // CORRECTED: The Router component takes the 'routes' array as a prop
   return <Router>{routes}</Router>;
 }

@@ -4,13 +4,13 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// A more helpful error message
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
     "Missing Supabase environment variables. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your .env file."
   );
 }
 
+// This client is ONLY for auth.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Auth helpers
@@ -22,6 +22,8 @@ export const authHelpers = {
       password,
       options: {
         data: {
+          // This metadata is read by the SQL trigger
+          role: "admin",
           business_name: businessName,
         },
       },

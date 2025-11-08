@@ -1,0 +1,13 @@
+The Solution (Native Geofencing):
+The only efficient and professional way to solve both problems is to use Native Geofencing APIs.
+
+How it works: Instead of our app constantly checking "Am I inside?", we give the Operating System(Android/iOS) a list of all our geofence coordinates from the backend (e.g., "arun", "dfsf").
+Low Power: The OS uses its own efficient, low-power services (cell tower and Wi-Fi triangulation) to monitor for these zones.
+Wake Up: When the OS detects the user crosses the boundary of one of these geofences, it wakes up our app in the background (even if it's closed) and sends it a single event: "User entered geofence 'dfsf'".
+Server-Side Timer: At that moment, our app wakes up, makes one API call to your Node.js server (e.g., POST /api/vouch/enter), and then goes back to sleep. The Node.js server starts the timer in the Supabase database. When the user leaves, the OS sends an "exit" event, and the app calls POST /api/vouch/stop.
+This solves both your problems:
+
+It works when the app is closed.
+It uses almost zero battery.
+
+this is the solution u gave but how to do this let discuss about that first

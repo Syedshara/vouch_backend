@@ -1,12 +1,12 @@
+// lib/pages/profile_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-// import 'package:animate_do/animate_do.dart'; // Animation package removed
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:vouch_app/app_theme.dart';
-import 'package:vouch_app/pages/login_page.dart';
-import 'package:vouch_app/providers/reward_provider.dart';
-import 'package:vouch_app/components/change_password_dialog.dart';
+import 'package:vouch/app_theme.dart';
+import 'package:vouch/pages/login_page.dart';
+import 'package:vouch/components/change_password_dialog.dart';
+import 'package:vouch/services/auth_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,26 +15,95 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-// Added AutomaticKeepAliveClientMixin to preserve state during navigation
-class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClientMixin<ProfilePage> {
-  // This ensures the page state is kept alive
+class _ProfilePageState extends State<ProfilePage>
+    with AutomaticKeepAliveClientMixin<ProfilePage> {
   @override
   bool get wantKeepAlive => true;
 
-  File? _imageFile;
-  final String _userName = 'Mog';
-  final String _userEmail = 'mog@example.com';
-  final String _userPhone = '+1 (555) 123-4567';
+  File? _imageFile; // For temporary preview
+  bool _isUploading = false;
 
-  Future<void> _pickImage() async {
+  @override
+  void initState() {
+    super.initState();
+    // Fetch profile if not already loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authService = context.read<AuthService>();
+      if (authService.customer == null && authService.isAuthenticated) {
+        authService.getCustomerProfile();
+      }
+    });
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    final pickedFile =
+    await picker.pickImage(source: source, imageQuality: 50);
 
     if (pickedFile != null) {
+      final file = File(pickedFile.path);
       setState(() {
-        _imageFile = File(pickedFile.path);
+        _imageFile = file; // Show local preview
+        _isUploading = true;
       });
+
+      // Start the upload
+      final authService = context.read<AuthService>();
+      final error = await authService.uploadProfileImage(file);
+
+      if (mounted) {
+        if (error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error), backgroundColor: Colors.red),
+          );
+        }
+        setState(() {
+          _imageFile = null; // Clear local preview, new URL will load
+          _isUploading = false;
+        });
+      }
     }
+  }
+
+  void _showImageSourceDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Select Image Source',
+            style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: AppTheme.primary),
+              title: const Text('Choose from Gallery',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: AppTheme.primary),
+              title: const Text('Take a Picture',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickImage(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child:
+            const Text('Cancel', style: TextStyle(color: AppTheme.primary)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _handleSignOut() {
@@ -43,19 +112,26 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: const Text('Sign Out', style: TextStyle(color: Colors.white)),
-        content: const Text('Are you sure you want to sign out?', style: TextStyle(color: Colors.grey)),
+        content: const Text('Are you sure you want to sign out?',
+            style: TextStyle(color: Colors.grey)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.primary)),
+            child:
+            const Text('Cancel', style: TextStyle(color: AppTheme.primary)),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginPage()),
-                    (route) => false,
-              );
+            onPressed: () async {
+              final authService = context.read<AuthService>();
+              await authService.signOut();
+
+              if (mounted) {
+                Navigator.pop(context); // Close dialog
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                      (route) => false,
+                );
+              }
             },
             child: const Text('Sign Out', style: TextStyle(color: Colors.red)),
           ),
@@ -66,8 +142,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
 
   @override
   Widget build(BuildContext context) {
-    // This is required by the AutomaticKeepAliveClientMixin
     super.build(context);
+
+    // Read from the provider
+    final authService = context.watch<AuthService>();
+    final customer = authService.customer;
 
     return Scaffold(
       appBar: AppBar(
@@ -75,61 +154,56 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         elevation: 0,
         backgroundColor: AppTheme.surface,
       ),
-      body: Consumer<RewardProvider>(
-        builder: (context, rewardProvider, _) {
-          final totalRewards = rewardProvider.claimedRewards.length;
-          final pendingRewards = rewardProvider.pendingNotifications.length;
-          final totalConnections = 12; // Mock data
-
-          return ListView(
-            padding: const EdgeInsets.all(20.0),
-            children: [
-              // FadeInDown removed
-              _buildProfileHeader(),
-              const SizedBox(height: 32),
-
-              // FadeInUp removed
-              _buildStatsSection(totalRewards, pendingRewards, totalConnections),
-              const SizedBox(height: 32),
-
-              // FadeInUp removed
-              _buildSectionTitle('Account Settings'),
-              // FadeInUp removed
-              _buildAccountSettingsCard(),
-              const SizedBox(height: 24),
-
-              // FadeInUp removed
-              _buildSectionTitle('Security'),
-              // FadeInUp removed
-              _buildSecurityCard(),
-              const SizedBox(height: 32),
-
-              // FadeInUp removed
-              ElevatedButton(
-                onPressed: _handleSignOut,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red[900]!.withOpacity(0.8),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.logout, size: 20),
-                    SizedBox(width: 8),
-                    Text('Sign Out', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          );
-        },
+      body: authService.isLoadingProfile && customer == null
+          ? const Center(child: CircularProgressIndicator())
+          : customer == null
+          ? const Center(child: Text('Could not load profile.'))
+          : ListView(
+        padding: const EdgeInsets.all(20.0),
+        children: [
+          _buildProfileHeader(customer),
+          const SizedBox(height: 32),
+          // --- "YOUR ACTIVITY" SECTION IS REMOVED ---
+          _buildSectionTitle('Account Settings'),
+          _buildAccountSettingsCard(customer),
+          const SizedBox(height: 24),
+          _buildSectionTitle('Security'),
+          _buildSecurityCard(),
+          const SizedBox(height: 32),
+          ElevatedButton(
+            onPressed: _handleSignOut,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red[900]!.withOpacity(0.8),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.logout, size: 20),
+                SizedBox(width: 8),
+                Text('Sign Out',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildProfileHeader(Customer customer) {
+    // Decide which image to show
+    ImageProvider? backgroundImage;
+    if (_imageFile != null) {
+      backgroundImage = FileImage(_imageFile!); // Local preview
+    } else if (customer.avatarUrl != null && customer.avatarUrl!.isNotEmpty) {
+      backgroundImage = NetworkImage(customer.avatarUrl!); // Remote image
+    }
+
     return Column(
       children: [
         Stack(
@@ -138,7 +212,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.primary.withOpacity(0.5), width: 2),
+                border: Border.all(
+                    color: AppTheme.primary.withOpacity(0.5), width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: AppTheme.primary.withOpacity(0.2),
@@ -150,9 +225,10 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
               child: CircleAvatar(
                 radius: 55,
                 backgroundColor: AppTheme.surface,
-                backgroundImage: _imageFile != null ? FileImage(_imageFile!) : null,
-                child: _imageFile == null
-                    ? const Icon(Icons.person, size: 70, color: AppTheme.primary)
+                backgroundImage: backgroundImage,
+                child: (backgroundImage == null && !_isUploading)
+                    ? const Icon(Icons.person,
+                    size: 70, color: AppTheme.primary)
                     : null,
               ),
             ),
@@ -160,11 +236,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
               bottom: 0,
               right: 0,
               child: GestureDetector(
-                onTap: _pickImage,
+                onTap: _isUploading ? null : _showImageSourceDialog,
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppTheme.primary,
+                    color: _isUploading ? Colors.grey[600] : AppTheme.primary,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -174,7 +250,16 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.edit, color: Colors.white, size: 22),
+                  child: _isUploading
+                      ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Icon(Icons.edit, color: Colors.white, size: 22),
                 ),
               ),
             ),
@@ -182,128 +267,28 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         ),
         const SizedBox(height: 20),
         Text(
-          _userName,
-          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+          customer.name,
+          style: const TextStyle(
+              fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         const SizedBox(height: 8),
         Text(
-          _userEmail,
+          customer.email,
           style: TextStyle(fontSize: 14, color: Colors.grey[400]),
         ),
       ],
     );
   }
 
-  Widget _buildStatsSection(int totalRewards, int pendingRewards, int connections) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Your Activity',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.text),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                icon: Icons.card_giftcard,
-                title: 'Claimed',
-                value: totalRewards.toString(),
-                color: AppTheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildStatCard(
-                icon: Icons.pending_actions,
-                title: 'Pending',
-                value: pendingRewards.toString(),
-                color: Colors.orange,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                icon: Icons.people,
-                title: 'Connections',
-                value: connections.toString(),
-                color: Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildStatCard(
-                icon: Icons.trending_up,
-                title: 'Total Value',
-                value: '\$${(totalRewards * 15).toString()}',
-                color: Colors.green,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String title,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 12,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.text),
+      style: TextStyle(
+          fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.text),
     );
   }
 
-  Widget _buildAccountSettingsCard() {
+  Widget _buildAccountSettingsCard(Customer customer) {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -315,22 +300,32 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
           _buildSettingsTile(
             icon: Icons.person_outline,
             title: 'Full Name',
-            subtitle: _userName,
-            onTap: () => _showEditDialog('Full Name', _userName),
+            subtitle: customer.name,
+            onTap: () => _showEditDialog('Full Name', customer.name, (newName) {
+              context.read<AuthService>().updateCustomerProfile(
+                newName,
+                customer.phone ?? '',
+              );
+            }),
           ),
           Divider(color: Colors.grey[800], height: 1),
           _buildSettingsTile(
             icon: Icons.email_outlined,
             title: 'Email Address',
-            subtitle: _userEmail,
-            onTap: () => _showEditDialog('Email', _userEmail),
+            subtitle: customer.email,
+            onTap: null, // Don't allow email editing
           ),
           Divider(color: Colors.grey[800], height: 1),
           _buildSettingsTile(
             icon: Icons.phone_outlined,
             title: 'Phone Number',
-            subtitle: _userPhone,
-            onTap: () => _showEditDialog('Phone', _userPhone),
+            subtitle: customer.phone ?? 'Not set',
+            onTap: () => _showEditDialog('Phone', customer.phone ?? '', (newPhone) {
+              context.read<AuthService>().updateCustomerProfile(
+                customer.name,
+                newPhone,
+              );
+            }),
           ),
         ],
       ),
@@ -360,7 +355,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     required IconData icon,
     required String title,
     required String subtitle,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -374,18 +369,22 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
       ),
       title: Text(
         title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+        style: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
       ),
       subtitle: Text(
         subtitle,
         style: TextStyle(fontSize: 13, color: Colors.grey[400]),
       ),
-      trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[600]),
+      trailing: (onTap != null)
+          ? Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[600])
+          : null,
       onTap: onTap,
     );
   }
 
-  void _showEditDialog(String field, String currentValue) {
+  void _showEditDialog(
+      String field, String currentValue, Function(String) onSave) {
     final controller = TextEditingController(text: currentValue);
     showDialog(
       context: context,
@@ -413,10 +412,12 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.primary)),
+            child:
+            const Text('Cancel', style: TextStyle(color: AppTheme.primary)),
           ),
           TextButton(
             onPressed: () {
+              onSave(controller.text.trim()); // Call the save function
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

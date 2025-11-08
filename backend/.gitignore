@@ -1,0 +1,8 @@
+node_modules
+
+# Environment variables
+.env
+
+# ECC Keys (if you saved them as files)
+server_private_key.pem
+server_public_key.pem

@@ -1,5 +1,7 @@
+// src/pages/ProfilePage.jsx
 import { createSignal, onMount } from "solid-js";
-import { supabase, authHelpers } from "../lib/supabase";
+import { authHelpers } from "../lib/supabase";
+import { api } from "../lib/api"; // <-- IMPORT NEW API HELPER
 
 export default function ProfilePage() {
   const [businessName, setBusinessName] = createSignal("");
@@ -16,38 +18,29 @@ export default function ProfilePage() {
   });
 
   const loadProfile = async () => {
-    const { user } = await authHelpers.getUser();
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from("business_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    if (data) {
+    setLoading(true);
+    try {
+      // --- THIS IS THE FIX ---
+      const data = await api.getProfile();
       setBusinessName(data.business_name || "");
-      setEmail(data.email || user.email || "");
+      setEmail(data.email || "");
       setPhone(data.phone || "");
       setWebsite(data.website || "");
       setDescription(data.description || "");
-    } else if (!error || error.code === "PGRST116") {
-      // No profile exists yet, use user email
-      setEmail(user.email || "");
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+      // Fallback if no profile, get email from auth
+      const { user } = await authHelpers.getUser();
+      if (user) setEmail(user.email || "");
     }
-
     setLoading(false);
   };
 
   const handleSave = async () => {
-    const { user } = await authHelpers.getUser();
-    if (!user) return;
-
     setSaving(true);
     setMessage({ type: "", text: "" });
 
     const profileData = {
-      user_id: user.id,
       business_name: businessName(),
       email: email(),
       phone: phone(),
@@ -55,38 +48,16 @@ export default function ProfilePage() {
       description: description(),
     };
 
-    // Check if profile exists
-    const { data: existing } = await supabase
-      .from("business_profiles")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    let error;
-
-    if (existing) {
-      // Update existing profile
-      const result = await supabase
-        .from("business_profiles")
-        .update(profileData)
-        .eq("user_id", user.id);
-      error = result.error;
-    } else {
-      // Insert new profile
-      const result = await supabase
-        .from("business_profiles")
-        .insert([profileData]);
-      error = result.error;
-    }
-
-    if (error) {
+    try {
+      // --- THIS IS THE FIX ---
+      await api.updateProfile(profileData);
+      setMessage({ type: "success", text: "Profile saved successfully!" });
+      setTimeout(() => setMessage({ type: "", text: "" }), 3000);
+    } catch (error) {
       setMessage({
         type: "error",
         text: "Failed to save profile. Please try again.",
       });
-    } else {
-      setMessage({ type: "success", text: "Profile saved successfully!" });
-      setTimeout(() => setMessage({ type: "", text: "" }), 3000);
     }
 
     setSaving(false);
@@ -94,9 +65,10 @@ export default function ProfilePage() {
 
   const handleSignOut = async () => {
     await authHelpers.signOut();
-    window.location.href = "/auth";
+    window.location.href = "/login"; // Use window.location to force full reload
   };
 
+  // ... (Your JSX remains identical) ...
   return (
     <div class="page-container">
       <div class="page-header">
@@ -107,7 +79,6 @@ export default function ProfilePage() {
           </p>
         </div>
       </div>
-
       {loading() ? (
         <div class="loading">Loading profile...</div>
       ) : (
@@ -129,7 +100,6 @@ export default function ProfilePage() {
                 onInput={(e) => setBusinessName(e.target.value)}
               />
             </div>
-
             <div class="form-group">
               <label class="form-label">Email</label>
               <input
@@ -143,7 +113,6 @@ export default function ProfilePage() {
                 This email will be used for customer communications
               </p>
             </div>
-
             <div class="form-group">
               <label class="form-label">Phone</label>
               <input
@@ -154,7 +123,6 @@ export default function ProfilePage() {
                 onInput={(e) => setPhone(e.target.value)}
               />
             </div>
-
             <div class="form-group">
               <label class="form-label">Website</label>
               <input
@@ -165,7 +133,6 @@ export default function ProfilePage() {
                 onInput={(e) => setWebsite(e.target.value)}
               />
             </div>
-
             <div class="form-group">
               <label class="form-label">Description</label>
               <textarea
@@ -176,11 +143,9 @@ export default function ProfilePage() {
                 onInput={(e) => setDescription(e.target.value)}
               />
             </div>
-
             {message().text && (
               <div class={`message ${message().type}`}>{message().text}</div>
             )}
-
             <div class="profile-actions">
               <button type="submit" class="btn-primary" disabled={saving()}>
                 {saving() ? "Saving..." : "Save Changes"}

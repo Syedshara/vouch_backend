@@ -1,9 +1,8 @@
-// lib/pages/dashboard_page.dart
 import 'package:flutter/material.dart';
-import 'package:vouch_app/pages/home_page.dart';
-import 'package:vouch_app/pages/profile_page.dart';
-import 'package:vouch_app/pages/rewards_page.dart';
-import 'package:vouch_app/pages/notifications_page.dart';
+import 'package:vouch/pages/home_page.dart';
+import 'package:vouch/pages/profile_page.dart';
+import 'package:vouch/pages/rewards_page.dart';
+import 'package:vouch/pages/notifications_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -30,11 +29,9 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _onItemTapped(int index) {
-    // We don't need setState here because the onPageChanged callback will handle it.
-    // This makes the animation smoother.
+    // This makes the animation smooth when tapping the nav bar
     _pageController.animateToPage(
       index,
-      // Updated duration and curve for a smoother feel.
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
@@ -53,7 +50,7 @@ class _DashboardPageState extends State<DashboardPage> {
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged, // Updates the nav bar when swiping
-        // The children are now stateful and will keep their state.
+        // These are your four main pages
         children: const <Widget>[
           HomePage(),
           NotificationsPage(),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:math'; // Added dart:math import for math functions
+import 'dart:math';
+import 'dart:async'; // We keep this for the Future
 
 class LocationData {
   final double latitude;
@@ -19,6 +20,8 @@ class LocationProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _locationPermissionGranted = false;
+
+  // --- REMOVED LIVE STREAM SUBSCRIPTION ---
 
   LocationData? get currentLocation => _currentLocation;
   bool get isLoading => _isLoading;
@@ -41,6 +44,7 @@ class LocationProvider with ChangeNotifier {
         _locationPermissionGranted = false;
       } else {
         _locationPermissionGranted = true;
+        // --- REVERTED: Call one-time fetch ---
         await getCurrentLocation();
       }
     } catch (e) {
@@ -53,6 +57,7 @@ class LocationProvider with ChangeNotifier {
     return _locationPermissionGranted;
   }
 
+  // This is now a one-time fetch
   Future<void> getCurrentLocation() async {
     try {
       _isLoading = true;
@@ -75,6 +80,9 @@ class LocationProvider with ChangeNotifier {
         latitude: position.latitude,
         longitude: position.longitude,
       );
+
+      // --- REMOVED LIVE STREAM CALL ---
+
     } catch (e) {
       _error = 'Error getting location: $e';
     } finally {
@@ -82,6 +90,8 @@ class LocationProvider with ChangeNotifier {
       notifyListeners();
     }
   }
+
+  // --- REMOVED _startLocationStream() and dispose() ---
 
   double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     const p = 0.017453292519943295;

@@ -36,6 +36,22 @@ export default function Sidebar(props) {
           {!isCollapsed() && <span>Locations</span>}
         </A>
 
+        {/* --- THIS IS THE NEW SCANNER LINK --- */}
+        <A href="/scanner" class="nav-item" activeClass="active">
+          <svg
+            class="nav-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+          >
+            {/* Scanner Icon */}
+            <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7M2 12h20" />
+            <path d="M16 3H8a2 2 0 0 0-2 2v2M18 21v-2a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+          </svg>
+          {!isCollapsed() && <span>Scanner</span>}
+        </A>
+        {/* --- END OF NEW LINK --- */}
+
         <A href="/analytics" class="nav-item" activeClass="active">
           <svg
             class="nav-icon"
