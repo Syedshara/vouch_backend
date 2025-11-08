@@ -1,0 +1,23 @@
+# Node.js / SolidJS
+/node_modules
+/dist
+.env
+.env.*
+*.log
+.DS_Store
+
+# Flutter
+/build
+/ios/Pods/
+/ios/Podfile.lock
+/.dart_tool/
+/.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# ECC Keys
+*.pem
+
+# IDE settings
+.idea/
+.vscode/
